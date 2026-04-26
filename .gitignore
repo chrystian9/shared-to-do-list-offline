@@ -1,9 +1,12 @@
 # Miscellaneous
 *.class
+*.iml
 *.lock
 *.log
 *.pyc
 *.swp
+.idea/
+.metadata
 .buildlog/
 .history
 
