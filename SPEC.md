@@ -22,6 +22,25 @@ The app does not require:
 - Always-on connectivity
 - A permanent coordinator node
 
+### 1.3 Current Implementation Status (Apr 2026)
+The current codebase implements a functional offline-first core with deterministic CRDT replay and local persistence.
+
+Implemented now:
+- Full local CRUD flows for household/list/item operations.
+- Durable local persistence using SQLite operation log + snapshots.
+- Manual sync transport using JSON export/import payloads.
+- Idempotent import behavior through operation-level deduplication by `op_id`.
+- Import UX feedback showing success/failure and counts of imported vs duplicate operations.
+
+Not implemented yet:
+- Direct Wi-Fi (LAN) peer discovery and session-based sync.
+- Bluetooth transport.
+- QR/device invitation flow with live transport bootstrap.
+
+Platform/runtime notes:
+- Desktop (Windows/Linux) requires `sqflite_common_ffi` initialization before database access.
+- Android emulator/device builds are supported when Gradle/network prerequisites are available.
+
 ## 2. Functional Requirements
 
 ### 2.1 User Concepts

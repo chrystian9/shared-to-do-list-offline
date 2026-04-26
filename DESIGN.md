@@ -85,6 +85,19 @@ Each mobile device hosts a complete replica subsystem:
 
 No external server is required for correctness.
 
+### 1.5 Current Implementation Snapshot (Apr 2026)
+Implemented modules in code:
+- CRDT engine with deterministic replay and invariant checks.
+- SQLite-backed repositories for operations and snapshots.
+- App service orchestration for household/list/item use cases.
+- Manual JSON sync transport (`manual_json`) for export/import.
+- Basic sync dialogs in UI (paste/import and payload export).
+
+Current sync limitations:
+- No live session transport yet (no LAN discovery/socket session).
+- No background sync scheduler.
+- No peer auth/capability negotiation flow in runtime transport.
+
 ## 2. Module Breakdown
 
 ### 2.1 CRDT Engine Module
@@ -630,27 +643,22 @@ Sync is peer-to-peer replica exchange. The sync subsystem shall:
 - be resumable and idempotent
 
 ### 5.2 Transport Abstraction
-All transports implement a common session abstraction.
+The current implementation exposes a minimal transport contract focused on payload import/export.
 
 ```dart
 abstract interface class SyncTransport {
   String get transportId;
   Future<List<DiscoveredPeer>> discoverPeers();
-  Future<SyncSession> connect(PeerAddress address);
-  Future<ImportedPayload> importFromExternal(Uri source);
-  Future<Uri> exportToExternal(ExportPayload payload);
-}
-
-abstract interface class SyncSession {
-  Future<void> open();
-  Future<void> send(ProtocolMessage message);
-  Stream<ProtocolMessage> receive();
-  Future<void> close();
+  Future<String> exportPayload(ExportPayload payload);
+  Future<ExportPayload> importPayload(String serializedPayload);
 }
 ```
 
-Transport implementations:
-- `LanTransport`
+Current transport implementation:
+- `ManualJsonSyncTransport`
+
+Planned transport implementations:
+- `LanTransport` (Wi-Fi local network)
 - `BluetoothTransport`
 - `FileTransferTransport`
 - `OsShareTransport`
