@@ -22,6 +22,11 @@ import '../sync/transports.dart';
 import 'app_models.dart';
 import 'materialized_state_codec.dart';
 
+enum AppThemeMode {
+  classic,
+  terminal,
+}
+
 class AppService extends ChangeNotifier {
   AppService({
     required OperationRepository operationRepository,
@@ -42,6 +47,7 @@ class AppService extends ChangeNotifier {
   static const String _deviceIdKey = 'app.device_id';
   static const String _memberIdKey = 'app.member_id';
   static const String _memberNameKey = 'app.member_name';
+  static const String _themeModeKey = 'app.theme_mode';
 
   final OperationRepository _operationRepository;
   final SnapshotRepository _snapshotRepository;
@@ -56,6 +62,7 @@ class AppService extends ChangeNotifier {
   late String _deviceId;
   late String _memberId;
   late String _memberName;
+  late AppThemeMode _themeMode;
   late LamportClock _clock;
   late LocalOperationFactory _operationFactory;
 
@@ -67,6 +74,7 @@ class AppService extends ChangeNotifier {
 
   bool get initialized => _initialized;
   String get memberName => _memberName;
+  AppThemeMode get themeMode => _themeMode;
   HouseholdId? get selectedHouseholdId => _selectedHouseholdId;
   List<HouseholdSummaryVm> get households => _buildHouseholdSummaries();
   bool get lanServerRunning => _lanSyncServer.isRunning;
@@ -86,6 +94,9 @@ class AppService extends ChangeNotifier {
     _memberId = await _readOrCreateId(_memberIdKey);
     _memberName = await _settingsRepository.readJsonValue<String>(_memberNameKey) ??
         'Family member';
+    _themeMode = _parseThemeMode(
+      await _settingsRepository.readJsonValue<String>(_themeModeKey),
+    );
     final maxLamport = await _operationRepository.maxLamportForDevice(_deviceId);
     _clock = LamportClock(maxLamport);
     _operationFactory = LocalOperationFactory(
@@ -113,6 +124,16 @@ class AppService extends ChangeNotifier {
 
     _memberName = trimmed;
     await _settingsRepository.writeJsonValue(_memberNameKey, trimmed);
+    notifyListeners();
+  }
+
+  Future<void> setThemeMode(AppThemeMode value) async {
+    if (_themeMode == value) {
+      return;
+    }
+
+    _themeMode = value;
+    await _settingsRepository.writeJsonValue(_themeModeKey, value.name);
     notifyListeners();
   }
 
@@ -706,6 +727,15 @@ class AppService extends ChangeNotifier {
     final value = _uuid.v4();
     await _settingsRepository.writeJsonValue(key, value);
     return value;
+  }
+
+  AppThemeMode _parseThemeMode(String? value) {
+    for (final mode in AppThemeMode.values) {
+      if (mode.name == value) {
+        return mode;
+      }
+    }
+    return AppThemeMode.classic;
   }
 
   List<HouseholdSummaryVm> _buildHouseholdSummaries() {

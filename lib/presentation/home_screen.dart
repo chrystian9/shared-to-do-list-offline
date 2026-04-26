@@ -96,12 +96,23 @@ class HomeScreen extends StatelessWidget {
     required bool isCompact,
   }) {
     if (!isCompact) {
-      return [
-        IconButton(
-          tooltip: 'Join by invite',
-          onPressed: () => _showJoinByInviteDialog(context),
-          icon: const Icon(Icons.group_add),
+    return [
+      IconButton(
+        tooltip: service.themeMode == AppThemeMode.terminal
+            ? 'Switch to classic theme'
+            : 'Switch to terminal theme',
+        onPressed: () => _toggleThemeMode(),
+        icon: Icon(
+          service.themeMode == AppThemeMode.terminal
+              ? Icons.light_mode_outlined
+              : Icons.terminal,
         ),
+      ),
+      IconButton(
+        tooltip: 'Join by invite',
+        onPressed: () => _showJoinByInviteDialog(context),
+        icon: const Icon(Icons.group_add),
+      ),
         IconButton(
           tooltip: 'Create invite',
           onPressed: selectedHouseholdId == null
@@ -137,6 +148,17 @@ class HomeScreen extends StatelessWidget {
     }
 
     return [
+      IconButton(
+        tooltip: service.themeMode == AppThemeMode.terminal
+            ? 'Switch to classic theme'
+            : 'Switch to terminal theme',
+        onPressed: () => _toggleThemeMode(),
+        icon: Icon(
+          service.themeMode == AppThemeMode.terminal
+              ? Icons.light_mode_outlined
+              : Icons.terminal,
+        ),
+      ),
       IconButton(
         tooltip: 'Wi-Fi sync',
         onPressed: () => _showLanSyncDialog(context, selectedHouseholdId),
@@ -196,6 +218,13 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     ];
+  }
+
+  Future<void> _toggleThemeMode() async {
+    final nextMode = service.themeMode == AppThemeMode.terminal
+        ? AppThemeMode.classic
+        : AppThemeMode.terminal;
+    await service.setThemeMode(nextMode);
   }
 
   Future<void> _showCreateHouseholdDialog(BuildContext context) async {
