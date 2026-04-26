@@ -1,11 +1,11 @@
 {
-    "name": "shared_to_do_list_offline",
-    "short_name": "shared_to_do_list_offline",
+    "name": "To-Do List",
+    "short_name": "To-Do List",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Offline-first shared to-do list.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
