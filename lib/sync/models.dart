@@ -120,3 +120,46 @@ class ExportPayload {
     );
   }
 }
+
+class InvitationPayload {
+  const InvitationPayload({
+    required this.householdId,
+    required this.householdName,
+    required this.inviterMemberName,
+    required this.protocolVersion,
+    required this.schemaVersion,
+    required this.exportPayload,
+  });
+
+  final String householdId;
+  final String householdName;
+  final String inviterMemberName;
+  final int protocolVersion;
+  final int schemaVersion;
+  final ExportPayload exportPayload;
+
+  Map<String, Object?> toJson() {
+    return {
+      'kind': 'household_invite',
+      'householdId': householdId,
+      'householdName': householdName,
+      'inviterMemberName': inviterMemberName,
+      'protocolVersion': protocolVersion,
+      'schemaVersion': schemaVersion,
+      'exportPayload': exportPayload.toJson(),
+    };
+  }
+
+  factory InvitationPayload.fromJson(Map<String, Object?> json) {
+    return InvitationPayload(
+      householdId: json['householdId'] as String,
+      householdName: json['householdName'] as String,
+      inviterMemberName: json['inviterMemberName'] as String? ?? 'Family member',
+      protocolVersion: json['protocolVersion'] as int,
+      schemaVersion: json['schemaVersion'] as int,
+      exportPayload: ExportPayload.fromJson(
+        (json['exportPayload'] as Map).cast<String, Object?>(),
+      ),
+    );
+  }
+}

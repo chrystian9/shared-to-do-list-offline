@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -16,6 +17,7 @@ import '../domain/models/enums.dart';
 import '../domain/models/operation.dart';
 import '../domain/models/state.dart';
 import '../sync/models.dart';
+import '../sync/lan_sync.dart';
 import '../sync/transports.dart';
 import 'app_models.dart';
 import 'materialized_state_codec.dart';
@@ -48,6 +50,7 @@ class AppService extends ChangeNotifier {
   final CrdtEngine _engine;
   final Uuid _uuid;
   final MaterializedStateCodec _codec = MaterializedStateCodec();
+  final LanSyncServer _lanSyncServer = LanSyncServer();
 
   late String _deviceId;
   late String _memberId;
@@ -57,12 +60,16 @@ class AppService extends ChangeNotifier {
 
   final Map<HouseholdId, MaterializedHouseholdState> _states = {};
   HouseholdId? _selectedHouseholdId;
+  List<String> _lanAddresses = const [];
   bool _initialized = false;
 
   bool get initialized => _initialized;
   String get memberName => _memberName;
   HouseholdId? get selectedHouseholdId => _selectedHouseholdId;
   List<HouseholdSummaryVm> get households => _buildHouseholdSummaries();
+  bool get lanServerRunning => _lanSyncServer.isRunning;
+  int? get lanServerPort => _lanSyncServer.port;
+  List<String> get lanAddresses => _lanAddresses;
 
   Future<void> initialize() async {
     _deviceId = await _readOrCreateId(_deviceIdKey);
@@ -452,15 +459,101 @@ class AppService extends ChangeNotifier {
     );
   }
 
-  Future<void> importHousehold(String serializedPayload) async {
-    final payload = await _syncTransport.importPayload(serializedPayload);
-    await _operationRepository.appendBatch(payload.operations);
-    await _refreshHousehold(payload.summary.householdId);
+  Future<String> createInvitation(HouseholdId householdId) async {
+    final householdName =
+        _states[householdId]?.household?.name.value ?? 'Shared household';
+    final exportedPayload = await exportHousehold(householdId);
+    final payload = await _syncTransport.importPayload(exportedPayload);
+    final invitation = InvitationPayload(
+      householdId: householdId,
+      householdName: householdName,
+      inviterMemberName: _memberName,
+      protocolVersion: protocolVersion,
+      schemaVersion: schemaVersion,
+      exportPayload: payload,
+    );
+    return const JsonEncoder.withIndent('  ').convert(invitation.toJson());
+  }
 
-    if (_selectedHouseholdId == null) {
-      _selectedHouseholdId = payload.summary.householdId;
+  Future<ImportHouseholdResult> importHousehold(String serializedPayload) async {
+    final payload = await _syncTransport.importPayload(serializedPayload);
+    return _importParsedPayload(payload);
+  }
+
+  Future<ImportHouseholdResult> acceptInvitation(String serializedInvitation) async {
+    final decoded = jsonDecode(serializedInvitation);
+    if (decoded is! Map) {
+      throw const FormatException('Invalid invitation format.');
     }
+    final invitation = InvitationPayload.fromJson(
+      decoded.cast<String, Object?>(),
+    );
+    if (invitation.protocolVersion != protocolVersion) {
+      throw FormatException(
+        'Incompatible protocol version: ${invitation.protocolVersion}. '
+        'Expected $protocolVersion.',
+      );
+    }
+    if (invitation.schemaVersion != schemaVersion) {
+      throw FormatException(
+        'Incompatible schema version: ${invitation.schemaVersion}. '
+        'Expected $schemaVersion.',
+      );
+    }
+    return _importParsedPayload(invitation.exportPayload);
+  }
+
+  Future<void> startLanSyncServer({int port = 4040}) async {
+    await _lanSyncServer.start(
+      port: port,
+      deviceId: _deviceId,
+      memberName: _memberName,
+      onExportRequested: exportHousehold,
+    );
+    await refreshLanAddresses();
     notifyListeners();
+  }
+
+  Future<void> stopLanSyncServer() async {
+    await _lanSyncServer.stop();
+    notifyListeners();
+  }
+
+  Future<void> refreshLanAddresses() async {
+    _lanAddresses = await LanSyncServer.localIpv4Addresses();
+    notifyListeners();
+  }
+
+  Future<ImportHouseholdResult> syncFromLanPeer({
+    required String host,
+    required int port,
+    required String householdId,
+  }) async {
+    final payload = await LanSyncClient.fetchPayload(
+      host: host,
+      port: port,
+      householdId: householdId,
+    );
+    return importHousehold(payload);
+  }
+
+  Future<ImportHouseholdResult> _importParsedPayload(ExportPayload payload) async {
+    final householdId = payload.summary.householdId;
+    final beforeCount = (await _operationRepository.loadForHousehold(householdId)).length;
+
+    await _operationRepository.appendBatch(payload.operations);
+    final afterCount = (await _operationRepository.loadForHousehold(householdId)).length;
+    await _refreshHousehold(householdId);
+
+    _selectedHouseholdId = householdId;
+    notifyListeners();
+
+    final importedCount = (afterCount - beforeCount).clamp(0, payload.operations.length);
+    return ImportHouseholdResult(
+      importedCount: importedCount,
+      duplicateCount: payload.operations.length - importedCount,
+      householdId: householdId,
+    );
   }
 
   void selectHousehold(HouseholdId householdId) {
@@ -623,4 +716,22 @@ class AppService extends ChangeNotifier {
     final encoded = operations.map((operation) => operation.toJson()).toList();
     return base64Encode(utf8.encode(jsonEncode(encoded)));
   }
+
+  @override
+  void dispose() {
+    unawaited(_lanSyncServer.stop());
+    super.dispose();
+  }
+}
+
+class ImportHouseholdResult {
+  const ImportHouseholdResult({
+    required this.importedCount,
+    required this.duplicateCount,
+    required this.householdId,
+  });
+
+  final int importedCount;
+  final int duplicateCount;
+  final HouseholdId householdId;
 }

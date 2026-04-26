@@ -32,6 +32,23 @@ class HomeScreen extends StatelessWidget {
             ),
             actions: [
               IconButton(
+                tooltip: 'Join by invite',
+                onPressed: () => _showJoinByInviteDialog(context),
+                icon: const Icon(Icons.group_add),
+              ),
+              IconButton(
+                tooltip: 'Create invite',
+                onPressed: selectedHouseholdId == null
+                    ? null
+                    : () => _showInviteDialog(context, selectedHouseholdId),
+                icon: const Icon(Icons.mail_outline),
+              ),
+              IconButton(
+                tooltip: 'Wi-Fi sync',
+                onPressed: () => _showLanSyncDialog(context, selectedHouseholdId),
+                icon: const Icon(Icons.wifi),
+              ),
+              IconButton(
                 tooltip: 'Import',
                 onPressed: () => _showImportDialog(context),
                 icon: const Icon(Icons.download),
@@ -264,6 +281,32 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _showInviteDialog(BuildContext context, String householdId) async {
+    final invitation = await service.createInvitation(householdId);
+    if (!context.mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Household invite'),
+          content: SizedBox(
+            width: 640,
+            child: SelectableText(invitation),
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _showImportDialog(BuildContext context) async {
     final controller = TextEditingController();
     await showDialog<void>(
@@ -289,9 +332,32 @@ class HomeScreen extends StatelessWidget {
             ),
             FilledButton(
               onPressed: () async {
-                await service.importHousehold(controller.text);
-                if (context.mounted) {
-                  Navigator.of(context).pop();
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final cleanedPayload = _normalizeImportPayload(controller.text);
+                  if (cleanedPayload.isEmpty) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Paste a valid export payload first.')),
+                    );
+                    return;
+                  }
+
+                  final result = await service.importHousehold(cleanedPayload);
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Import complete: ${result.importedCount} new ops, '
+                        '${result.duplicateCount} duplicates.',
+                      ),
+                    ),
+                  );
+                } catch (error) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Import failed: $error')),
+                  );
                 }
               },
               child: const Text('Import'),
@@ -300,6 +366,224 @@ class HomeScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<void> _showJoinByInviteDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Join by invite'),
+          content: SizedBox(
+            width: 640,
+            child: TextField(
+              controller: controller,
+              maxLines: 16,
+              decoration: const InputDecoration(
+                hintText: 'Paste invite payload here',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  final cleanedPayload = _normalizeImportPayload(controller.text);
+                  if (cleanedPayload.isEmpty) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Paste a valid invite payload first.')),
+                    );
+                    return;
+                  }
+
+                  final result = await service.acceptInvitation(cleanedPayload);
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Joined household: ${result.importedCount} new ops, '
+                        '${result.duplicateCount} duplicates.',
+                      ),
+                    ),
+                  );
+                } catch (error) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text('Invite failed: $error')),
+                  );
+                }
+              },
+              child: const Text('Join'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _showLanSyncDialog(
+    BuildContext context,
+    String? selectedHouseholdId,
+  ) async {
+    final hostController = TextEditingController();
+    final portController = TextEditingController(
+      text: (service.lanServerPort ?? 4040).toString(),
+    );
+    final householdController = TextEditingController(text: selectedHouseholdId ?? '');
+    await service.refreshLanAddresses();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> toggleServer() async {
+              final messenger = ScaffoldMessenger.of(context);
+              try {
+                if (service.lanServerRunning) {
+                  await service.stopLanSyncServer();
+                } else {
+                  final parsedPort = int.tryParse(portController.text.trim());
+                  if (parsedPort == null || parsedPort <= 0 || parsedPort > 65535) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Invalid port. Use a value from 1 to 65535.')),
+                    );
+                    return;
+                  }
+                  await service.startLanSyncServer(port: parsedPort);
+                }
+                if (context.mounted) {
+                  setState(() {});
+                }
+              } catch (error) {
+                messenger.showSnackBar(SnackBar(content: Text('Wi-Fi server error: $error')));
+              }
+            }
+
+            Future<void> syncFromPeer() async {
+              final messenger = ScaffoldMessenger.of(context);
+              final host = hostController.text.trim();
+              final householdId = householdController.text.trim();
+              final parsedPort = int.tryParse(portController.text.trim());
+              if (host.isEmpty || householdId.isEmpty || parsedPort == null) {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Fill host, port, and household id.')),
+                );
+                return;
+              }
+
+              try {
+                final result = await service.syncFromLanPeer(
+                  host: host,
+                  port: parsedPort,
+                  householdId: householdId,
+                );
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Wi-Fi sync complete: ${result.importedCount} new ops, '
+                      '${result.duplicateCount} duplicates.',
+                    ),
+                  ),
+                );
+              } catch (error) {
+                messenger.showSnackBar(SnackBar(content: Text('Wi-Fi sync failed: $error')));
+              }
+            }
+
+            final addresses = service.lanAddresses;
+            final runningText = service.lanServerRunning
+                ? 'Running on port ${service.lanServerPort}.'
+                : 'Server stopped.';
+            return AlertDialog(
+              title: const Text('Wi-Fi sync (LAN)'),
+              content: SizedBox(
+                width: 640,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(runningText),
+                    const SizedBox(height: 8),
+                    if (addresses.isNotEmpty)
+                      Text('Local IPs: ${addresses.join(', ')}')
+                    else
+                      const Text('No LAN IPv4 detected.'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: hostController,
+                      decoration: const InputDecoration(
+                        labelText: 'Peer host/IP',
+                        hintText: 'e.g. 192.168.0.20',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: portController,
+                      decoration: const InputDecoration(labelText: 'Port'),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: householdController,
+                      decoration: const InputDecoration(labelText: 'Household ID'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Close'),
+                ),
+                OutlinedButton(
+                  onPressed: toggleServer,
+                  child: Text(service.lanServerRunning ? 'Stop server' : 'Start server'),
+                ),
+                FilledButton(
+                  onPressed: syncFromPeer,
+                  child: const Text('Sync from peer'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _normalizeImportPayload(String rawPayload) {
+    final trimmed = rawPayload.trim();
+    if (!trimmed.startsWith('```')) {
+      return trimmed;
+    }
+
+    final lines = trimmed.split('\n');
+    if (lines.length < 3) {
+      return trimmed;
+    }
+
+    final firstLine = lines.first.trim();
+    final lastLine = lines.last.trim();
+    if (firstLine.startsWith('```') && lastLine == '```') {
+      return lines.sublist(1, lines.length - 1).join('\n').trim();
+    }
+
+    return trimmed;
   }
 }
 
