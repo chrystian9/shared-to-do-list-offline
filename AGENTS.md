@@ -8,3 +8,6 @@ Repository working rules:
 4. Do not leave `SPEC.md`, `DESIGN.md`, or `TASKS.md` knowingly out of sync with the implemented app.
 5. When a task is completed or partially completed, reflect that status in `TASKS.md` if the tracker is affected.
 6. Prefer small, accurate documentation updates over broad speculative rewrites.
+7. Follow TDD whenever it is reasonably practical for the change.
+8. For new behavior or bug fixes, add or update a failing test first when feasible, then implement the minimum code needed to make it pass.
+9. If a test-first change is not practical, document that constraint in the work summary and still add focused tests as soon as the code can be exercised safely.
