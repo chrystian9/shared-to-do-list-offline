@@ -21,6 +21,7 @@ class HomeScreen extends StatelessWidget {
         final lists = selectedHouseholdId == null
             ? const <ListVm>[]
             : service.visibleLists(selectedHouseholdId);
+        final isCompact = MediaQuery.sizeOf(context).width < 840;
 
         return Scaffold(
           appBar: AppBar(
@@ -30,69 +31,42 @@ class HomeScreen extends StatelessWidget {
                   : service.householdState(selectedHouseholdId)?.household?.name.value ??
                       'Shared Lists Offline',
             ),
-            actions: [
-              IconButton(
-                tooltip: 'Join by invite',
-                onPressed: () => _showJoinByInviteDialog(context),
-                icon: const Icon(Icons.group_add),
-              ),
-              IconButton(
-                tooltip: 'Create invite',
-                onPressed: selectedHouseholdId == null
-                    ? null
-                    : () => _showInviteDialog(context, selectedHouseholdId),
-                icon: const Icon(Icons.mail_outline),
-              ),
-              IconButton(
-                tooltip: 'Wi-Fi sync',
-                onPressed: () => _showLanSyncDialog(context, selectedHouseholdId),
-                icon: const Icon(Icons.wifi),
-              ),
-              IconButton(
-                tooltip: 'Import',
-                onPressed: () => _showImportDialog(context),
-                icon: const Icon(Icons.download),
-              ),
-              IconButton(
-                tooltip: 'Export',
-                onPressed: selectedHouseholdId == null
-                    ? null
-                    : () => _showExportDialog(context, selectedHouseholdId),
-                icon: const Icon(Icons.upload),
-              ),
-              IconButton(
-                tooltip: 'Rename household',
-                onPressed: selectedHouseholdId == null
-                    ? null
-                    : () => _showRenameHouseholdDialog(context, selectedHouseholdId),
-                icon: const Icon(Icons.edit),
-              ),
-            ],
+            actions: _buildAppBarActions(
+              context,
+              selectedHouseholdId: selectedHouseholdId,
+              isCompact: isCompact,
+            ),
           ),
           body: selectedHouseholdId == null
               ? _EmptyState(
                   onCreate: () => _showCreateHouseholdDialog(context),
                 )
-              : Row(
-                  children: [
-                    SizedBox(
-                      width: 280,
-                      child: _HouseholdPane(
-                        service: service,
-                        onCreateHousehold: () => _showCreateHouseholdDialog(context),
-                      ),
+              : isCompact
+                  ? _ListsPane(
+                      householdId: selectedHouseholdId,
+                      lists: lists,
+                      service: service,
+                    )
+                  : Row(
+                      children: [
+                        SizedBox(
+                          width: 280,
+                          child: _HouseholdPane(
+                            service: service,
+                            onCreateHousehold: () => _showCreateHouseholdDialog(context),
+                          ),
+                        ),
+                        const VerticalDivider(width: 1),
+                        Expanded(
+                          child: _ListsPane(
+                            householdId: selectedHouseholdId,
+                            lists: lists,
+                            service: service,
+                          ),
+                        ),
+                      ],
                     ),
-                    const VerticalDivider(width: 1),
-                    Expanded(
-                      child: _ListsPane(
-                        householdId: selectedHouseholdId,
-                        lists: lists,
-                        service: service,
-                      ),
-                    ),
-                  ],
-                ),
-          drawer: selectedHouseholdId == null
+          drawer: selectedHouseholdId == null || !isCompact
               ? null
               : Drawer(
                   child: _HouseholdPane(
@@ -114,6 +88,114 @@ class HomeScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  List<Widget> _buildAppBarActions(
+    BuildContext context, {
+    required String? selectedHouseholdId,
+    required bool isCompact,
+  }) {
+    if (!isCompact) {
+      return [
+        IconButton(
+          tooltip: 'Join by invite',
+          onPressed: () => _showJoinByInviteDialog(context),
+          icon: const Icon(Icons.group_add),
+        ),
+        IconButton(
+          tooltip: 'Create invite',
+          onPressed: selectedHouseholdId == null
+              ? null
+              : () => _showInviteDialog(context, selectedHouseholdId),
+          icon: const Icon(Icons.mail_outline),
+        ),
+        IconButton(
+          tooltip: 'Wi-Fi sync',
+          onPressed: () => _showLanSyncDialog(context, selectedHouseholdId),
+          icon: const Icon(Icons.wifi),
+        ),
+        IconButton(
+          tooltip: 'Import',
+          onPressed: () => _showImportDialog(context),
+          icon: const Icon(Icons.download),
+        ),
+        IconButton(
+          tooltip: 'Export',
+          onPressed: selectedHouseholdId == null
+              ? null
+              : () => _showExportDialog(context, selectedHouseholdId),
+          icon: const Icon(Icons.upload),
+        ),
+        IconButton(
+          tooltip: 'Rename household',
+          onPressed: selectedHouseholdId == null
+              ? null
+              : () => _showRenameHouseholdDialog(context, selectedHouseholdId),
+          icon: const Icon(Icons.edit),
+        ),
+      ];
+    }
+
+    return [
+      IconButton(
+        tooltip: 'Wi-Fi sync',
+        onPressed: () => _showLanSyncDialog(context, selectedHouseholdId),
+        icon: const Icon(Icons.wifi),
+      ),
+      PopupMenuButton<String>(
+        tooltip: 'More actions',
+        onSelected: (value) async {
+          switch (value) {
+            case 'join':
+              await _showJoinByInviteDialog(context);
+              break;
+            case 'invite':
+              if (selectedHouseholdId != null) {
+                await _showInviteDialog(context, selectedHouseholdId);
+              }
+              break;
+            case 'import':
+              await _showImportDialog(context);
+              break;
+            case 'export':
+              if (selectedHouseholdId != null) {
+                await _showExportDialog(context, selectedHouseholdId);
+              }
+              break;
+            case 'rename':
+              if (selectedHouseholdId != null) {
+                await _showRenameHouseholdDialog(context, selectedHouseholdId);
+              }
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem<String>(
+            value: 'join',
+            child: Text('Join by invite'),
+          ),
+          PopupMenuItem<String>(
+            value: 'invite',
+            enabled: selectedHouseholdId != null,
+            child: const Text('Create invite'),
+          ),
+          const PopupMenuItem<String>(
+            value: 'import',
+            child: Text('Import'),
+          ),
+          PopupMenuItem<String>(
+            value: 'export',
+            enabled: selectedHouseholdId != null,
+            child: const Text('Export'),
+          ),
+          PopupMenuItem<String>(
+            value: 'rename',
+            enabled: selectedHouseholdId != null,
+            child: const Text('Rename household'),
+          ),
+        ],
+      ),
+    ];
   }
 
   Future<void> _showCreateHouseholdDialog(BuildContext context) async {
