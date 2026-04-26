@@ -4,8 +4,26 @@ import 'dart:io';
 
 typedef ExportPayloadResolver = Future<String> Function(String householdId);
 
+class LanPeerInfo {
+  const LanPeerInfo({
+    required this.deviceId,
+    required this.memberName,
+    required this.host,
+    required this.port,
+    required this.lastSeenAt,
+  });
+
+  final String deviceId;
+  final String memberName;
+  final String host;
+  final int port;
+  final DateTime lastSeenAt;
+}
+
 class LanSyncServer {
   HttpServer? _server;
+  RawDatagramSocket? _announceSocket;
+  Timer? _announceTimer;
 
   bool get isRunning => _server != null;
   int? get port => _server?.port;
@@ -26,6 +44,11 @@ class LanSyncServer {
       shared: true,
     );
     _server = server;
+    await _startAnnouncements(
+      port: server.port,
+      deviceId: deviceId,
+      memberName: memberName,
+    );
 
     unawaited(
       server.forEach((request) async {
@@ -84,6 +107,10 @@ class LanSyncServer {
       return;
     }
     _server = null;
+    _announceTimer?.cancel();
+    _announceTimer = null;
+    _announceSocket?.close();
+    _announceSocket = null;
     await current.close(force: true);
   }
 
@@ -101,6 +128,36 @@ class LanSyncServer {
       }
     }
     return addresses.toList()..sort();
+  }
+
+  Future<void> _startAnnouncements({
+    required int port,
+    required String deviceId,
+    required String memberName,
+  }) async {
+    final socket = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+    socket.broadcastEnabled = true;
+    _announceSocket = socket;
+
+    void sendAnnouncement() {
+      final message = jsonEncode({
+        'kind': 'shared_lists_offline_peer',
+        'deviceId': deviceId,
+        'memberName': memberName,
+        'port': port,
+      });
+      socket.send(
+        utf8.encode(message),
+        InternetAddress('255.255.255.255'),
+        LanPeerDiscovery.discoveryPort,
+      );
+    }
+
+    sendAnnouncement();
+    _announceTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => sendAnnouncement(),
+    );
   }
 
   Future<void> _writeJsonResponse(
@@ -123,6 +180,71 @@ class LanSyncServer {
     response.headers.contentType = ContentType.text;
     response.write(body);
     await response.close();
+  }
+}
+
+class LanPeerDiscovery {
+  static const int discoveryPort = 4041;
+
+  RawDatagramSocket? _socket;
+
+  Future<void> start({
+    required void Function(LanPeerInfo peer) onPeerDiscovered,
+  }) async {
+    if (_socket != null) {
+      return;
+    }
+
+    final socket = await RawDatagramSocket.bind(
+      InternetAddress.anyIPv4,
+      discoveryPort,
+      reuseAddress: true,
+      reusePort: true,
+    );
+    _socket = socket;
+
+    socket.listen((event) {
+      if (event != RawSocketEvent.read) {
+        return;
+      }
+      final datagram = socket.receive();
+      if (datagram == null) {
+        return;
+      }
+
+      try {
+        final decoded = jsonDecode(utf8.decode(datagram.data));
+        if (decoded is! Map) {
+          return;
+        }
+        if (decoded['kind'] != 'shared_lists_offline_peer') {
+          return;
+        }
+        final deviceId = decoded['deviceId'];
+        final memberName = decoded['memberName'];
+        final port = decoded['port'];
+        if (deviceId is! String || memberName is! String || port is! int) {
+          return;
+        }
+
+        onPeerDiscovered(
+          LanPeerInfo(
+            deviceId: deviceId,
+            memberName: memberName,
+            host: datagram.address.address,
+            port: port,
+            lastSeenAt: DateTime.now(),
+          ),
+        );
+      } catch (_) {
+        // Ignore malformed discovery datagrams.
+      }
+    });
+  }
+
+  Future<void> stop() async {
+    _socket?.close();
+    _socket = null;
   }
 }
 

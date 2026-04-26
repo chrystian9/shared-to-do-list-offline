@@ -51,6 +51,7 @@ class AppService extends ChangeNotifier {
   final Uuid _uuid;
   final MaterializedStateCodec _codec = MaterializedStateCodec();
   final LanSyncServer _lanSyncServer = LanSyncServer();
+  final LanPeerDiscovery _lanPeerDiscovery = LanPeerDiscovery();
 
   late String _deviceId;
   late String _memberId;
@@ -61,6 +62,7 @@ class AppService extends ChangeNotifier {
   final Map<HouseholdId, MaterializedHouseholdState> _states = {};
   HouseholdId? _selectedHouseholdId;
   List<String> _lanAddresses = const [];
+  final Map<String, LanPeerInfo> _discoveredLanPeers = {};
   bool _initialized = false;
 
   bool get initialized => _initialized;
@@ -70,6 +72,14 @@ class AppService extends ChangeNotifier {
   bool get lanServerRunning => _lanSyncServer.isRunning;
   int? get lanServerPort => _lanSyncServer.port;
   List<String> get lanAddresses => _lanAddresses;
+  List<LanPeerInfo> get discoveredLanPeers {
+    final now = DateTime.now();
+    final peers = _discoveredLanPeers.values
+        .where((peer) => now.difference(peer.lastSeenAt) < const Duration(seconds: 8))
+        .toList(growable: false)
+      ..sort((a, b) => a.memberName.compareTo(b.memberName));
+    return peers;
+  }
 
   Future<void> initialize() async {
     _deviceId = await _readOrCreateId(_deviceIdKey);
@@ -537,6 +547,19 @@ class AppService extends ChangeNotifier {
     return importHousehold(payload);
   }
 
+  Future<void> startLanPeerDiscovery() async {
+    await _lanPeerDiscovery.start(onPeerDiscovered: (peer) {
+      _discoveredLanPeers[peer.deviceId] = peer;
+      notifyListeners();
+    });
+  }
+
+  Future<void> stopLanPeerDiscovery() async {
+    await _lanPeerDiscovery.stop();
+    _discoveredLanPeers.clear();
+    notifyListeners();
+  }
+
   Future<ImportHouseholdResult> _importParsedPayload(ExportPayload payload) async {
     final householdId = payload.summary.householdId;
     final beforeCount = (await _operationRepository.loadForHousehold(householdId)).length;
@@ -720,6 +743,7 @@ class AppService extends ChangeNotifier {
   @override
   void dispose() {
     unawaited(_lanSyncServer.stop());
+    unawaited(_lanPeerDiscovery.stop());
     super.dispose();
   }
 }

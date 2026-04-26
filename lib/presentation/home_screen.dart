@@ -439,131 +439,160 @@ class HomeScreen extends StatelessWidget {
     );
     final householdController = TextEditingController(text: selectedHouseholdId ?? '');
     await service.refreshLanAddresses();
+    await service.startLanPeerDiscovery();
 
     if (!context.mounted) {
       return;
     }
 
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            Future<void> toggleServer() async {
-              final messenger = ScaffoldMessenger.of(context);
-              try {
-                if (service.lanServerRunning) {
-                  await service.stopLanSyncServer();
-                } else {
-                  final parsedPort = int.tryParse(portController.text.trim());
-                  if (parsedPort == null || parsedPort <= 0 || parsedPort > 65535) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('Invalid port. Use a value from 1 to 65535.')),
-                    );
-                    return;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          return AnimatedBuilder(
+            animation: service,
+            builder: (context, _) {
+              Future<void> toggleServer() async {
+                final messenger = ScaffoldMessenger.of(context);
+                try {
+                  if (service.lanServerRunning) {
+                    await service.stopLanSyncServer();
+                  } else {
+                    final parsedPort = int.tryParse(portController.text.trim());
+                    if (parsedPort == null || parsedPort <= 0 || parsedPort > 65535) {
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Invalid port. Use a value from 1 to 65535.')),
+                      );
+                      return;
+                    }
+                    await service.startLanSyncServer(port: parsedPort);
                   }
-                  await service.startLanSyncServer(port: parsedPort);
+                } catch (error) {
+                  messenger.showSnackBar(SnackBar(content: Text('Wi-Fi server error: $error')));
                 }
-                if (context.mounted) {
-                  setState(() {});
-                }
-              } catch (error) {
-                messenger.showSnackBar(SnackBar(content: Text('Wi-Fi server error: $error')));
-              }
-            }
-
-            Future<void> syncFromPeer() async {
-              final messenger = ScaffoldMessenger.of(context);
-              final host = hostController.text.trim();
-              final householdId = householdController.text.trim();
-              final parsedPort = int.tryParse(portController.text.trim());
-              if (host.isEmpty || householdId.isEmpty || parsedPort == null) {
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('Fill host, port, and household id.')),
-                );
-                return;
               }
 
-              try {
-                final result = await service.syncFromLanPeer(
-                  host: host,
-                  port: parsedPort,
-                  householdId: householdId,
-                );
-                if (context.mounted) {
-                  Navigator.of(context).pop();
+              Future<void> syncFromPeer() async {
+                final messenger = ScaffoldMessenger.of(context);
+                final host = hostController.text.trim();
+                final householdId = householdController.text.trim();
+                final parsedPort = int.tryParse(portController.text.trim());
+                if (host.isEmpty || householdId.isEmpty || parsedPort == null) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Fill host, port, and household id.')),
+                  );
+                  return;
                 }
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Wi-Fi sync complete: ${result.importedCount} new ops, '
-                      '${result.duplicateCount} duplicates.',
-                    ),
-                  ),
-                );
-              } catch (error) {
-                messenger.showSnackBar(SnackBar(content: Text('Wi-Fi sync failed: $error')));
-              }
-            }
 
-            final addresses = service.lanAddresses;
-            final runningText = service.lanServerRunning
-                ? 'Running on port ${service.lanServerPort}.'
-                : 'Server stopped.';
-            return AlertDialog(
-              title: const Text('Wi-Fi sync (LAN)'),
-              content: SizedBox(
-                width: 640,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(runningText),
-                    const SizedBox(height: 8),
-                    if (addresses.isNotEmpty)
-                      Text('Local IPs: ${addresses.join(', ')}')
-                    else
-                      const Text('No LAN IPv4 detected.'),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: hostController,
-                      decoration: const InputDecoration(
-                        labelText: 'Peer host/IP',
-                        hintText: 'e.g. 192.168.0.20',
+                try {
+                  final result = await service.syncFromLanPeer(
+                    host: host,
+                    port: parsedPort,
+                    householdId: householdId,
+                  );
+                  if (context.mounted) {
+                    Navigator.of(context).pop();
+                  }
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Wi-Fi sync complete: ${result.importedCount} new ops, '
+                        '${result.duplicateCount} duplicates.',
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: portController,
-                      decoration: const InputDecoration(labelText: 'Port'),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: householdController,
-                      decoration: const InputDecoration(labelText: 'Household ID'),
-                    ),
-                  ],
+                  );
+                } catch (error) {
+                  messenger.showSnackBar(SnackBar(content: Text('Wi-Fi sync failed: $error')));
+                }
+              }
+
+              final addresses = service.lanAddresses;
+              final peers = service.discoveredLanPeers;
+              final runningText = service.lanServerRunning
+                  ? 'Running on port ${service.lanServerPort}.'
+                  : 'Server stopped.';
+              return AlertDialog(
+                title: const Text('Wi-Fi sync (LAN)'),
+                content: SizedBox(
+                  width: 640,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(runningText),
+                      const SizedBox(height: 8),
+                      if (addresses.isNotEmpty)
+                        Text('Local IPs: ${addresses.join(', ')}')
+                      else
+                        const Text('No LAN IPv4 detected.'),
+                      const SizedBox(height: 8),
+                      if (peers.isNotEmpty) ...[
+                        const Text('Discovered peers'),
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          height: 120,
+                          child: ListView.builder(
+                            itemCount: peers.length,
+                            itemBuilder: (context, index) {
+                              final peer = peers[index];
+                              return ListTile(
+                                dense: true,
+                                title: Text(peer.memberName),
+                                subtitle: Text('${peer.host}:${peer.port}'),
+                                trailing: const Icon(Icons.wifi_tethering, size: 18),
+                                onTap: () {
+                                  hostController.text = peer.host;
+                                  portController.text = peer.port.toString();
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ] else
+                        const Text('Waiting for peers... start server on another device.'),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: hostController,
+                        decoration: const InputDecoration(
+                          labelText: 'Peer host/IP',
+                          hintText: 'Tap discovered peer or type manually',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: portController,
+                        decoration: const InputDecoration(labelText: 'Port'),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: householdController,
+                        decoration: const InputDecoration(labelText: 'Household ID'),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Close'),
-                ),
-                OutlinedButton(
-                  onPressed: toggleServer,
-                  child: Text(service.lanServerRunning ? 'Stop server' : 'Start server'),
-                ),
-                FilledButton(
-                  onPressed: syncFromPeer,
-                  child: const Text('Sync from peer'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                  OutlinedButton(
+                    onPressed: toggleServer,
+                    child: Text(service.lanServerRunning ? 'Stop server' : 'Start server'),
+                  ),
+                  FilledButton(
+                    onPressed: syncFromPeer,
+                    child: const Text('Sync from peer'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      await service.stopLanPeerDiscovery();
+    }
   }
 
   String _normalizeImportPayload(String rawPayload) {
