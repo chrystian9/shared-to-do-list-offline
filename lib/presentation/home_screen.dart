@@ -438,8 +438,24 @@ class HomeScreen extends StatelessWidget {
       text: (service.lanServerPort ?? 4040).toString(),
     );
     final householdController = TextEditingController(text: selectedHouseholdId ?? '');
-    await service.refreshLanAddresses();
-    await service.startLanPeerDiscovery();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await service.refreshLanAddresses();
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not read local network addresses: $error')),
+      );
+    }
+
+    var discoveryStarted = false;
+    try {
+      await service.startLanPeerDiscovery();
+      discoveryStarted = true;
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Could not start Wi-Fi peer discovery: $error')),
+      );
+    }
 
     if (!context.mounted) {
       return;
@@ -591,7 +607,9 @@ class HomeScreen extends StatelessWidget {
         },
       );
     } finally {
-      await service.stopLanPeerDiscovery();
+      if (discoveryStarted) {
+        await service.stopLanPeerDiscovery();
+      }
     }
   }
 
