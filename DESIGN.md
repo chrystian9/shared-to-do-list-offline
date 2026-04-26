@@ -21,6 +21,7 @@ Responsibilities:
 - Translate user intents into application commands
 - Observe derived view models
 - Show sync status, validation errors, and conflict outcomes
+- Apply local-only layout and visual theme preferences without changing shared-state semantics
 
 Includes:
 - Flutter widgets
@@ -91,12 +92,15 @@ Implemented modules in code:
 - SQLite-backed repositories for operations and snapshots.
 - App service orchestration for household/list/item use cases.
 - Manual JSON sync transport (`manual_json`) for export/import.
-- Basic sync dialogs in UI (paste/import and payload export).
+- LAN sync transport with local HTTP export, peer discovery, and Wi-Fi sync dialogs.
+- Basic sync dialogs in UI (paste/import, payload export, invitations, and LAN sync).
+- Responsive compact/mobile layout that prioritizes list content and moves household navigation into a drawer on narrow screens.
+- Local visual theme preference with `classic` and `terminal` modes persisted per device.
 
 Current sync limitations:
-- No live session transport yet (no LAN discovery/socket session).
 - No background sync scheduler.
 - No peer auth/capability negotiation flow in runtime transport.
+- LAN sync depends on local network availability and platform permissions; discovery/startup failures are surfaced in the UI and do not block opening the sync dialog.
 
 ## 2. Module Breakdown
 
@@ -230,6 +234,8 @@ Submodules:
 - Collapsed completed-items state
 - sort/filter settings
 - last opened views
+- selected visual theme mode
+- compact vs split-pane navigation depending on available width
 
 ## 3. Data Flow
 

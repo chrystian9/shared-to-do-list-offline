@@ -29,17 +29,21 @@ Implemented now:
 - Full local CRUD flows for household/list/item operations.
 - Durable local persistence using SQLite operation log + snapshots.
 - Manual sync transport using JSON export/import payloads.
+- Direct Wi-Fi (LAN) sync using local peer discovery plus on-demand payload fetch from another device.
 - Idempotent import behavior through operation-level deduplication by `op_id`.
-- Import UX feedback showing success/failure and counts of imported vs duplicate operations.
+- Import/sync UX feedback showing success/failure and counts of imported vs duplicate operations.
+- Mobile-responsive layout that switches from split-pane to drawer-based navigation on narrow screens.
+- Two local UI presentation modes: `classic` and `terminal`.
 
 Not implemented yet:
-- Direct Wi-Fi (LAN) peer discovery and session-based sync.
 - Bluetooth transport.
 - QR/device invitation flow with live transport bootstrap.
+- Background sync scheduler.
 
 Platform/runtime notes:
 - Desktop (Windows/Linux) requires `sqflite_common_ffi` initialization before database access.
 - Android emulator/device builds are supported when Gradle/network prerequisites are available.
+- Android LAN sync requires the manifest permissions used by the local network transport.
 
 ## 2. Functional Requirements
 
@@ -182,6 +186,7 @@ Edge cases:
 - A sync session interrupted midway shall not corrupt local state
 - Repeating the same sync after a partial sync must be safe and idempotent
 - Sync with an older device version may be rejected if protocol compatibility rules fail
+- Failure to enumerate local addresses or start discovery on a device shall not prevent the sync UI from opening; the user shall still be able to enter host/port details manually
 
 ### 2.11 Local Data Control
 The app shall allow a user to:
@@ -194,6 +199,16 @@ Edge cases:
 - Importing already known operations shall be idempotent
 - Purging local data on one device shall not affect other devices
 - Purging and later rejoining a household shall recreate state from replicated operations
+
+### 2.12 Local Presentation Preferences
+The app shall support local-only presentation preferences including:
+- Switching between `classic` and `terminal` visual modes
+- Using a compact navigation layout on narrow/mobile screens
+
+Edge cases:
+- Local presentation preferences shall not replicate to peers as shared household state
+- Changing visual mode shall not alter data, sync behavior, or deterministic merge outcomes
+- Devices with different local presentation modes shall still represent the same shared household state
 
 ## 3. Non-Functional Requirements
 

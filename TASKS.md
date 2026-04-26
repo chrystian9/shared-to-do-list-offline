@@ -35,6 +35,8 @@
 - [x] Implement manual JSON export/import transport
 - [x] Support deterministic import into the operation log
 - [x] Add import UX feedback (success/error and duplicate/new counts)
+- [x] Add direct Wi-Fi (LAN) sync transport with peer discovery and payload fetch
+- [x] Keep Wi-Fi sync dialog usable when address/discovery startup fails
 - [ ] Add compatibility checks (schema/protocol) at import boundary
 
 ## Phase 6: UI
@@ -43,6 +45,8 @@
 - [x] Implement list creation, rename, archive, and delete flows
 - [x] Implement item creation, edit, check/uncheck, and delete flows
 - [x] Implement import/export dialogs
+- [x] Improve mobile layout by prioritizing lists and moving household navigation into a drawer on narrow screens
+- [x] Add switchable `classic` and `terminal` visual modes persisted per device
 - [ ] Add clipboard helpers for export/import flow
 
 ## Phase 7: Testing and Validation
@@ -52,9 +56,9 @@
 - [ ] Add end-to-end two-device import/export convergence test script
 
 ## Phase 8: Wi-Fi Sync (Next)
-- [ ] Add LAN transport dependency set and platform permissions
-- [ ] Implement peer discovery on local network
-- [ ] Implement direct device-to-device session handshake
+- [x] Add LAN transport dependency set and platform permissions
+- [x] Implement peer discovery on local network
+- [x] Implement direct device-to-device session handshake
 - [ ] Exchange replica summaries and request missing ops only
 - [ ] Implement chunked payload transfer with retry/idempotency
 - [ ] Add per-session progress and error states in UI
